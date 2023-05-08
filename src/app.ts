@@ -1,17 +1,16 @@
-import express from "express"
+import express, { Request, Response, NextFunction } from "express"
 import bcrypt from "bcrypt"
 import { Pool, QueryResult} from "pg"
 import dotenv from "dotenv"
-import jwt from 'jsonwebtoken'
+import  jwt, { JwtPayload }  from 'jsonwebtoken' 
 import bodyParser from 'body-parser';
 import Joi from 'joi';
 
 
 
 dotenv.config({ path: './config.env' });
-const app = express();
-const port = 3001;
-app.use(bodyParser.json());
+const port = 3002;
+
 
 const connectionString = `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
 
@@ -82,6 +81,53 @@ const studentSchema = Joi.object({
   total_marks: Joi.number().required(),
   exam_type: Joi.string().required()
 });
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+    }
+  }
+}
+// Define the authentication middleware
+
+const authenticateUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      throw new Error('Authorization header not found');
+    }
+    const [bearer, token] = authHeader.split(' ');
+    if (bearer !== 'Bearer' || !token) {
+      throw new Error('Invalid authorization header');
+    }
+    const { rows } = await pool.query('SELECT * FROM users WHERE token = $1', [token]);
+    if (rows.length === 0) {
+      throw new Error('Invalid authorization token');
+    }
+    req.user = rows[0];
+    next();
+  } catch (err: unknown) {
+    console.error(`Authentication error: ${(err as Error).message}`);
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+};
+
+const authorizeAdmin = (req: Request, res: Response, next: () => void) => {
+  const isAdmin = req.user && req.user.role === 'admin';
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Unauthorized access' });
+  }
+  next();
+};
+
+function verifyToken(token: string): AuthenticatedUser {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as AuthenticatedUser;
+  return decoded;
+}
+
+const app = express();
+app.use(express.json());
+app.use(bodyParser.json());
 
 // Register a new user
 app.post('/register', async (req, res) => {
@@ -126,55 +172,75 @@ app.post('/register', async (req, res) => {
     }
 });
 
-app.post('/user/login', async (req, res) => {
+//Define the user login endpoint
+  app.post('/login', async (req: Request, res: Response) => {
+    try {
+      const { error } = userSchema.validate(req.body);
+      if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+      }
+      const { username, password } = req.body;
+      const Result = userSchema.validate({ email: 'example@domain.com' });
+      console.log(Result); // { value: { email: 'example@domain.com' }, error: null }
+  
+      const invalidResult = userSchema.validate({ email: 'invalid_email_address' });
+  console.log(invalidResult.error); // Error: "email" must be a valid email
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username); 
+  
+      const result = await pool.query(`SELECT * FROM users WHERE ${isEmail ? 'email' : 'username'} = $1`, [username]);
+      const user = result.rows[0];
+      if (user && await bcrypt.compare(password, user.password)) {
+        const token = jwt.sign({ id: user.id }, 'your-secret-key');
+        res.json({token});
+      } else {
+        res.status(400).json({ error: 'Invalid username or password' });
+      }
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Something went wrong' });
+    }
+  });
+    
+
+  interface AuthenticatedUser extends JwtPayload {
+  role: string;
+}
+
+// Define the user result endpoint for admins
+app.post('/results', authenticateUser, authorizeAdmin, async (req: Request, res: Response) => {
   try {
-    const { error } = userSchema.validate(req.body);
+    // Validate request body
+    const { error } = studentSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
-    const { username, password } = req.body;
-    const Result = userSchema.validate({ email: 'example@domain.com' });
-    console.log(Result); // { value: { email: 'example@domain.com' }, error: null }
-
-    const invalidResult = userSchema.validate({ email: 'invalid_email_address' });
-console.log(invalidResult.error); // Error: "email" must be a valid email
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username); 
-
-    const result = await pool.query(`SELECT * FROM users WHERE ${isEmail ? 'email' : 'username'} = $1`, [username]);
-    const user = result.rows[0];
-    if (user && await bcrypt.compare(password, user.password)) {
-      const token = jwt.sign({ id: user.id }, 'your-secret-key');
-      res.json({token});
-    } else {
-      res.status(400).json({ error: 'Invalid username or password' });
+    const { student_id, exam_type, total_marks } = req.body;
+    // Check if user with given student ID exists
+    const result = await pool.query('SELECT * FROM users WHERE role=$1 AND student_id=$2', ['student', student_id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
     }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Something went wrong' });
-  }
-});
-
-//Create Result
-app.post('/user/addresult', async (req, res) => {
-  try {
-    const { student_id,total_marks, exam_type, name } = req.body;
-   
-
-    // Insert the result
-    const result = await pool.query(
-      'INSERT INTO Student (student_id, name, total_marks, exam_type) VALUES ($1, $2, $3,$4) RETURNING *',
-      [student_id, name, total_marks, exam_type],
-    );
-
-    res.status(201).json({ message:'created Result' });
+    // Insert or update result in database
+    await pool.query('INSERT INTO results (student_id, exam_type, total_marks) VALUES ($1, $2, $3) ON CONFLICT (student_id, exam_type) DO UPDATE SET total_marks=$3', [student_id, exam_type, total_marks]);
+    return res.status(200).json({ message: 'Result added/updated successfully' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+
+
+
+
+
 
 // Update result record 
 app.put('/results/:student_id', async (req, res) => {
+  const { error } = userSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
   const studentId = req.params.student_id;
   const { name, total_marks,exam_type } = req.body;
 
@@ -211,10 +277,15 @@ app.delete('/results/:student_id', async (req, res) => {
   );
 });
 
+  
 
 // student login
 app.get("/student/login", async (req, res) => {
     try {
+      const { error } = studentSchema.validate(req.body);
+      if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+      }
         const query = 'SELECT * FROM student';
         const result: QueryResult = await pool.query(query);
         const students: Student[] = result.rows;
@@ -226,6 +297,10 @@ app.get("/student/login", async (req, res) => {
 });
 
 app.get('/results/:student_id', (req, res) => {
+  const { error } = studentSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
   const studentId = req.params.student_id;
   pool.query(
       'SELECT * FROM Student WHERE student_id = $1',
