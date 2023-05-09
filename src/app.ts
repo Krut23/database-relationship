@@ -323,7 +323,7 @@ const storage = multer.diskStorage({
 });
 
 const multerConfig = multer({ storage:storage,limits: {
-  fileSize: 1024 * 1024 * 0.1 }});
+  fileSize: 1024 * 1024 * 4 }});
 
 // Define the API 
 app.post('/users/profile-picture', multerConfig.single('profilePicture'), (req: Request, res: Response) => {
