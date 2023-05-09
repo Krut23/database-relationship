@@ -165,7 +165,7 @@ app.post('/register', async (req, res) => {
 });
 
 // user login 
-app.post('/login', async (req, res) => {
+app.post('/login', authenticateUser, authorizeAdmin, async (req, res) => {
   try {
     const { error } = userSchema.validate(req.body);
     if (error) {
