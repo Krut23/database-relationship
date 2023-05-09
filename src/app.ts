@@ -5,6 +5,8 @@ import dotenv from "dotenv"
 import  jwt, { JwtPayload }  from 'jsonwebtoken' 
 import bodyParser from 'body-parser';
 import Joi from 'joi';
+import multer from 'multer'
+import './db'
 
 
 
@@ -13,13 +15,11 @@ const port = 3002;
 
 
 const connectionString = `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
-
 console.log("PG_CONNECTION_STRING: ", connectionString);
 
 const pool = new Pool({
     connectionString
   });
-
 pool.connect();
 
 pool.query('SELECT NOW()', (err, res) => {
@@ -29,8 +29,6 @@ pool.query('SELECT NOW()', (err, res) => {
       console.log('Connected to the database at', res.rows[0].now);
     }
   });
-
-
 interface users  {
     username:string;
     password: string;
@@ -38,7 +36,6 @@ interface users  {
     email: string;
    
 }
-
 interface Student {
     name: string;
     student_id: number;
@@ -119,15 +116,10 @@ const authorizeAdmin = (req: Request, res: Response, next: () => void) => {
   }
   next();
 };
-
-function verifyToken(token: string): AuthenticatedUser {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as AuthenticatedUser;
-  return decoded;
-}
-
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
+
 
 // Register a new user
 app.post('/register', async (req, res) => {
@@ -172,41 +164,47 @@ app.post('/register', async (req, res) => {
     }
 });
 
-//Define the user login endpoint
-  app.post('/login', async (req: Request, res: Response) => {
-    try {
-      const { error } = userSchema.validate(req.body);
-      if (error) {
-        return res.status(400).json({ error: error.details[0].message });
-      }
-      const { username, password } = req.body;
-      const Result = userSchema.validate({ email: 'example@domain.com' });
-      console.log(Result); // { value: { email: 'example@domain.com' }, error: null }
-  
-      const invalidResult = userSchema.validate({ email: 'invalid_email_address' });
-  console.log(invalidResult.error); // Error: "email" must be a valid email
-      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username); 
-  
-      const result = await pool.query(`SELECT * FROM users WHERE ${isEmail ? 'email' : 'username'} = $1`, [username]);
-      const user = result.rows[0];
-      if (user && await bcrypt.compare(password, user.password)) {
-        const token = jwt.sign({ id: user.id }, 'your-secret-key');
-        res.json({token});
-      } else {
-        res.status(400).json({ error: 'Invalid username or password' });
-      }
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Something went wrong' });
+// user login 
+app.post('/login', async (req, res) => {
+  try {
+    const { error } = userSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
     }
-  });
+    const { username, password } = req.body;
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username);
+    const result = await pool.query(`SELECT * FROM users WHERE ${isEmail ? 'email' : 'username'} = $1`, [username]);
+    const user = result.rows[0];
     
+    if (user && await bcrypt.compare(password, user.password)) {
+      const token = jwt.sign({ id: user.id }, 'your-secret-key', { expiresIn: '1h' });
+      res.json({ token });
+    } else {
+      res.status(400).json({ error: 'Invalid username or password' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
 
-  interface AuthenticatedUser extends JwtPayload {
-  role: string;
+function authenticateToken(req:Request, res:Response, next:NextFunction) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (token == null) return res.status(401).json({ error: 'Access token not provided' });
+
+  jwt.verify(token, 'your-secret-key', (err, user) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    req.user = user;
+    next();
+  });
 }
+app.get('/verify', authenticateToken, (req, res) => {
+  res.json({ message: 'verify token' });
+});
 
-// Define the user result endpoint for admins
+
+//  user addresult  for users
 app.post('/results', authenticateUser, authorizeAdmin, async (req: Request, res: Response) => {
   try {
     // Validate request body
@@ -220,23 +218,17 @@ app.post('/results', authenticateUser, authorizeAdmin, async (req: Request, res:
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    // Insert or update result in database
+    // Insert  result in database
     await pool.query('INSERT INTO results (student_id, exam_type, total_marks) VALUES ($1, $2, $3) ON CONFLICT (student_id, exam_type) DO UPDATE SET total_marks=$3', [student_id, exam_type, total_marks]);
-    return res.status(200).json({ message: 'Result added/updated successfully' });
+    return res.status(200).json({ message: 'Result added successfully' });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-
-
-
-
-
-
 // Update result record 
-app.put('/results/:student_id', async (req, res) => {
+app.put('/results/:student_id',  authenticateUser, authorizeAdmin, async (req: Request, res: Response) => {
   const { error } = userSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -318,9 +310,37 @@ app.get('/results/:student_id', (req, res) => {
   );
 });
 
+// user upload profile picture
+
+// Define storage for profile picture uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb)=> {
+    cb(null, './upload/images');
+  },
+  filename: function (req, file, cb) {
+    cb(null,`${file.filename}_${Date.now}_${file.originalname}`)
+  }
+});
+
+const multerConfig = multer({ storage:storage,limits: {
+  fileSize: 1024 * 1024 * 0.1 }});
+
+// Define the API 
+app.post('/users/profile-picture', multerConfig.single('profilePicture'), (req: Request, res: Response) => {
+  if (req.file) {
+    // File was uploaded successfully
+    res.status(200).json({ message: 'User uploaded profile picture' });
+  } else {
+    // File was not uploaded successfully
+    res.status(400).json({ message: 'User profile picture upload failed' });
+  }
+});
 
 app.listen(port, () => {
     console.log("Server running on port:", port);
 });
+
+
+
 
 
