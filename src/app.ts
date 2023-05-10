@@ -1,34 +1,19 @@
 import express, { Request, Response, NextFunction } from "express"
 import bcrypt from "bcrypt"
-import { Pool, QueryResult} from "pg"
+import { QueryResult} from "pg"
 import dotenv from "dotenv"
-import  jwt, { JwtPayload }  from 'jsonwebtoken' 
+import  jwt from 'jsonwebtoken' 
 import bodyParser from 'body-parser';
 import Joi from 'joi';
 import multer from 'multer'
-import './db'
+import { pool } from './db'
+// import { authenticate } from './middleware';
 
 
 
 dotenv.config({ path: './config.env' });
 const port = 3002;
 
-
-const connectionString = `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`;
-console.log("PG_CONNECTION_STRING: ", connectionString);
-
-const pool = new Pool({
-    connectionString
-  });
-pool.connect();
-
-pool.query('SELECT NOW()', (err, res) => {
-    if (err) {
-      console.error('Error connecting to the database', err.stack);
-    } else {
-      console.log('Connected to the database at', res.rows[0].now);
-    }
-  });
 interface users  {
     username:string;
     password: string;
@@ -87,25 +72,19 @@ declare global {
 }
 // Define the authentication middleware
 
-const authenticateUser = async (req: Request, res: Response, next: NextFunction) => {
+export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  const token = req.headers.authorization?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authorization header is missing' });
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      throw new Error('Authorization header not found');
-    }
-    const [bearer, token] = authHeader.split(' ');
-    if (bearer !== 'Bearer' || !token) {
-      throw new Error('Invalid authorization header');
-    }
-    const { rows } = await pool.query('SELECT * FROM users WHERE token = $1', [token]);
-    if (rows.length === 0) {
-      throw new Error('Invalid authorization token');
-    }
-    req.user = rows[0];
+    const decoded = jwt.verify(token, 'your-secret-key');
+    req.user = decoded;
     next();
-  } catch (err: unknown) {
-    console.error(`Authentication error: ${(err as Error).message}`);
-    res.status(401).json({ error: 'Unauthorized' });
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid token' });    
   }
 };
 
@@ -116,13 +95,24 @@ const authorizeAdmin = (req: Request, res: Response, next: () => void) => {
   }
   next();
 };
+
+function authenticateToken(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!, (err: any, user: any) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
 const app = express();
-app.use(express.json());
 app.use(bodyParser.json());
 
 
 // Register a new user
-app.post('/register', async (req, res) => {
+app.post('/register' , async (req:Request, res:Response) => {
     try {
       const { error } = userSchema.validate(req.body);
       if (error) {
@@ -143,7 +133,11 @@ app.post('/register', async (req, res) => {
   
       const hashedPassword = await bcrypt.hash(password, 10);
       const result = await pool.query('INSERT INTO users (username, password, name, email) VALUES ($1, $2, $3, $4) RETURNING *', [username, hashedPassword, name, email]);
-      const user = result.rows[0];
+      
+      // const token = jwt.sign({id: user.id},'your-secret-key');
+      // res.status(201).json({user:result, token:token})
+
+      const users = result.rows[0];
       res.status(201).json({message: 'Register successful'});
     } catch (err) 
     {
@@ -154,7 +148,7 @@ app.post('/register', async (req, res) => {
 
   // Login as an existing user
 
-  app.get("/users", async (req, res) => {
+  app.get("/users", async (req:Request, res:Response) => {
     try {
         const user: users[] = await getuserresult();
         res.json({ user });
@@ -165,7 +159,7 @@ app.post('/register', async (req, res) => {
 });
 
 // user login 
-app.post('/login', authenticateUser, authorizeAdmin, async (req, res) => {
+app.post('/login',authenticate,authorizeAdmin, async (req:Request, res:Response) => {
   try {
     const { error } = userSchema.validate(req.body);
     if (error) {
@@ -178,7 +172,7 @@ app.post('/login', authenticateUser, authorizeAdmin, async (req, res) => {
     
     if (user && await bcrypt.compare(password, user.password)) {
       const token = jwt.sign({ id: user.id }, 'your-secret-key', { expiresIn: '1h' });
-      res.json({ token });
+      res.json({ access_token :token });
     } else {
       res.status(400).json({ error: 'Invalid username or password' });
     }
@@ -188,47 +182,35 @@ app.post('/login', authenticateUser, authorizeAdmin, async (req, res) => {
   }
 });
 
-function authenticateToken(req:Request, res:Response, next:NextFunction) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (token == null) return res.status(401).json({ error: 'Access token not provided' });
 
-  jwt.verify(token, 'your-secret-key', (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid token' });
-    req.user = user;
-    next();
-  });
-}
-app.get('/verify', authenticateToken, (req, res) => {
+app.get('/verify',authenticateToken, (req, res) => {
   res.json({ message: 'verify token' });
 });
 
 
 //  user addresult  for users
-app.post('/results', authenticateUser, authorizeAdmin, async (req: Request, res: Response) => {
+app.post('/results', authenticateToken, async (req: Request, res: Response) => {
+  const { student_id, name, exam_type, total_marks } = req.body;
+
   try {
+    
     // Validate request body
-    const { error } = studentSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ error: error.details[0].message });
-    }
-    const { student_id, exam_type, total_marks } = req.body;
-    // Check if user with given student ID exists
-    const result = await pool.query('SELECT * FROM users WHERE role=$1 AND student_id=$2', ['student', student_id]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    // Insert  result in database
-    await pool.query('INSERT INTO results (student_id, exam_type, total_marks) VALUES ($1, $2, $3) ON CONFLICT (student_id, exam_type) DO UPDATE SET total_marks=$3', [student_id, exam_type, total_marks]);
+    await studentSchema.validateAsync(req.body);
+
+    // Insert result in database
+    await pool.query('INSERT INTO Student (student_id, name, exam_type, total_marks) VALUES ($1, $2, $3, $4)', 
+    [student_id, name, exam_type, total_marks]);
+
     return res.status(200).json({ message: 'Result added successfully' });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(400).json({ error: `error.message` });
   }
 });
 
+
 // Update result record 
-app.put('/results/:student_id',  authenticateUser, authorizeAdmin, async (req: Request, res: Response) => {
+app.put('/results/:student_id',authenticateToken,  async (req: Request, res: Response) => {
   const { error } = userSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -251,7 +233,7 @@ app.put('/results/:student_id',  authenticateUser, authorizeAdmin, async (req: R
   );
 
 // Delete result record
-app.delete('/results/:student_id', async (req, res) => {
+app.delete('/results/:student_id', async (req:Request, res:Response) => {
   const id = req.params.student_id;
   pool.query(
       'DELETE FROM Student WHERE student_id = $1',
@@ -272,7 +254,7 @@ app.delete('/results/:student_id', async (req, res) => {
   
 
 // student login
-app.get("/student/login", async (req, res) => {
+app.get("/student/login", async (req:Request, res:Response) => {
     try {
       const { error } = studentSchema.validate(req.body);
       if (error) {
@@ -288,7 +270,7 @@ app.get("/student/login", async (req, res) => {
     }
 });
 
-app.get('/results/:student_id', (req, res) => {
+app.get('/results/:student_id', (req:Request, res:Response) => {
   const { error } = studentSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
