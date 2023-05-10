@@ -36,5 +36,3 @@ export const authorizeAdmin = (req: Request, res: Response, next: () => void) =>
   next();
 };
 
-
-module.exports= authenticate

@@ -7,7 +7,7 @@ import bodyParser from 'body-parser';
 import Joi from 'joi';
 import multer from 'multer'
 import { pool } from './db'
-// import { authenticate } from './middleware';
+import { authenticate } from './middleware';
 
 
 
@@ -29,7 +29,7 @@ interface Student {
     
 }
 export const getuserresult = async (): Promise<users[]> => {
-  const query = 'SELECT * FROM users';
+  const query = 'SELECT * FROM Student';
   const result: QueryResult = await pool.query(query);
   return result.rows;
 };
@@ -70,38 +70,14 @@ declare global {
     }
   }
 }
-// Define the authentication middleware
-
-export const authenticate = (req: Request, res: Response, next: NextFunction) => {
-  const token = req.headers.authorization?.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ message: 'Authorization header is missing' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, 'your-secret-key');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ message: 'Invalid token' });    
-  }
-};
-
-const authorizeAdmin = (req: Request, res: Response, next: () => void) => {
-  const isAdmin = req.user && req.user.role === 'admin';
-  if (!isAdmin) {
-    return res.status(403).json({ error: 'Unauthorized access' });
-  }
-  next();
-};
+const secret = "your-secrect-key"
 
 function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (token == null) return res.sendStatus(401);
 
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!, (err: any, user: any) => {
+  jwt.verify(token, process.env.ACCESS_TOKEN!, (err: any, user: any) => {
     if (err) return res.sendStatus(403);
     req.user = user;
     next();
@@ -148,7 +124,7 @@ app.post('/register' , async (req:Request, res:Response) => {
 
   // Login as an existing user
 
-  app.get("/users", async (req:Request, res:Response) => {
+  app.get("/users",authenticateToken,authenticate, async (req:Request, res:Response) => {
     try {
         const user: users[] = await getuserresult();
         res.json({ user });
@@ -159,7 +135,7 @@ app.post('/register' , async (req:Request, res:Response) => {
 });
 
 // user login 
-app.post('/login',authenticate,authorizeAdmin, async (req:Request, res:Response) => {
+app.post('/login', async (req:Request, res:Response) => {
   try {
     const { error } = userSchema.validate(req.body);
     if (error) {
@@ -171,7 +147,7 @@ app.post('/login',authenticate,authorizeAdmin, async (req:Request, res:Response)
     const user = result.rows[0];
     
     if (user && await bcrypt.compare(password, user.password)) {
-      const token = jwt.sign({ id: user.id }, 'your-secret-key', { expiresIn: '1h' });
+      const token = jwt.sign({ id: user.id }, secret, { expiresIn: '10h' });
       res.json({ access_token :token });
     } else {
       res.status(400).json({ error: 'Invalid username or password' });
@@ -210,7 +186,7 @@ app.post('/results', authenticateToken, async (req: Request, res: Response) => {
 
 
 // Update result record 
-app.put('/results/:student_id',authenticateToken,  async (req: Request, res: Response) => {
+app.put('/results/:student_id',authenticateToken,authenticate,  async (req: Request, res: Response) => {
   const { error } = userSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -233,7 +209,7 @@ app.put('/results/:student_id',authenticateToken,  async (req: Request, res: Res
   );
 
 // Delete result record
-app.delete('/results/:student_id', async (req:Request, res:Response) => {
+app.delete('/results/:student_id',authenticateToken,authenticate, async (req:Request, res:Response) => {
   const id = req.params.student_id;
   pool.query(
       'DELETE FROM Student WHERE student_id = $1',
@@ -254,7 +230,8 @@ app.delete('/results/:student_id', async (req:Request, res:Response) => {
   
 
 // student login
-app.get("/student/login", async (req:Request, res:Response) => {
+
+app.get("/student/login",authenticateToken,authenticate, async (req:Request, res:Response) => {
     try {
       const { error } = studentSchema.validate(req.body);
       if (error) {
@@ -270,7 +247,7 @@ app.get("/student/login", async (req:Request, res:Response) => {
     }
 });
 
-app.get('/results/:student_id', (req:Request, res:Response) => {
+app.get('/results/:student_id',authenticateToken,authenticate, (req:Request, res:Response) => {
   const { error } = studentSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -316,6 +293,9 @@ app.post('/users/profile-picture', multerConfig.single('profilePicture'), (req: 
     // File was not uploaded successfully
     res.status(400).json({ message: 'User profile picture upload failed' });
   }
+});
+app.get('/user/profilepicture', authenticateToken, (req: Request, res: Response) => {
+  //user profile 
 });
 
 app.listen(port, () => {
