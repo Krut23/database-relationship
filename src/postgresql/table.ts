@@ -19,23 +19,23 @@ const client = new Client({
 
 // Joi schema for user
 const pattern = '^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*])(?=.{5,10})';
-const message = {'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'}
+const message = { 'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character' }
+// Joi schema for user
 const userSchema = Joi.object({
-    username: Joi.string().alphanum().min(3).max(30).required(),
-    password: Joi.string().pattern(new RegExp(pattern)).required().messages(message),
-    name: Joi.string().required(),
-    email: Joi.string().email().required(),
-  });
-  // Joi schema for student
-  const studentSchema = Joi.object({
-    student_id: Joi.number().required(),
-    name: Joi.string().required(),
-    total_marks: Joi.number().required(),
-    exam_type: Joi.string().required()
-  });
+  name: Joi.string().required(),
+  password: Joi.string().pattern(new RegExp(pattern)).required().messages(message),
+  email: Joi.string().email().required(),
+  role: Joi.string().valid('admin', 'student').required()
+});
+// Joi schema for student
+const studentSchema = Joi.object({
+  student_id: Joi.number().required(),
+  subject: Joi.string().required(),
+  marks: Joi.number().integer().min(0).max(100).required()
+});
 
 client.query(
-    "CREATE TABLE users (id UUID NOT NULL DEFAULT gen_random_uuid(),username text NOT NULL,password text NOT NULL,name text NOT NULL,email text NOT NULL,UNIQUE (id));", (err: any, res: any) => {
+    "CREATE TABLE users (id SERIAL PRIMARY KEY,name TEXT NOT NULL,email VARCHAR(255) UNIQUE NOT NULL,password VARCHAR(255) NOT NULL,role VARCHAR(20) NOT NULL);", (err: any, res: any) => {
     if (err) {
         console.error(err);
         return;
@@ -46,12 +46,12 @@ client.query(
 
 
 client.query(
-    "CREATE TABLE Student (id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),student_id integer NOT NULL,name varchar(50) NOT NULL,total_marks integer NOT NULL,exam_type VARCHAR(20));", (err: any, res: any) => {
+    "CREATE TABLE results (id SERIAL PRIMARY KEY,student_id INTEGER ,subject VARCHAR(255) NOT NULL,marks INTEGER NOT NULL);", (err: any, res: any) => {
     if (err) {
         console.error(err);
         return;
     }
-    console.log('created table Student');
+    console.log('created table results');
         client.end();
 })
 app.listen(4001, () => {

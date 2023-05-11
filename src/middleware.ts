@@ -1,11 +1,12 @@
 
 import express,{ Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv'
 
 
 const app = express();
 app.use(express.json());
-
+dotenv.config({ path: './config.env' });
 declare global {
     namespace Express {
       interface Request {
@@ -13,6 +14,7 @@ declare global {
       }
     }
 }
+const ACCESS_TOKEN = "mysecretkey"
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(' ')[1];
 
@@ -21,7 +23,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   }
 
   try {
-    const decoded = jwt.verify(token, 'your-secret-key');
+    const decoded = jwt.verify(token, ACCESS_TOKEN);
     req.user = decoded;
     next();
   } catch (error) {
