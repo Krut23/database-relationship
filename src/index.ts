@@ -12,6 +12,7 @@ import { multerConfig , uploadProfilePicture } from './multer/profile';
 import path from 'path';
 
 
+
 dotenv.config({ path: './config.env' });
 const port = 3002;
 const app = express();
@@ -40,6 +41,7 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     return res.status(401).json({ message: 'Invalid token' });
   }
 };
+app.use('/upload/images', express.static(path.join(__dirname, 'upload', 'images')));
 
 // Set up API routes
 app.post('/user/signup', signup);
