@@ -1,6 +1,7 @@
 import multer from 'multer';
 import { Request, Response } from 'express';
 import fs from 'fs';
+import User from '../model/usermodel';
 
 
 const imageDir = './upload/images'; 
@@ -28,9 +29,20 @@ const multerConfig = multer({
 
 const uploadProfilePicture = async (req:Request, res:Response) => {
   try {
+    
+
     if (req.file !== undefined) {
       // File was uploaded successfully
-      res.status(200).json({ message: 'User uploaded profile picture' });
+      const user = await User.findOne({ where: { id: req.user.id } });
+      if (user) {
+        // Update the user record with the URL of the uploaded profile picture
+        const profilePictureUrl = `http://localhost:3002/upload/images/${req.file.filename}`;
+        await user.update({ profilePictureUrl });
+        res.status(200).json({ message: 'User uploaded profile picture' });
+      } else {
+        // User not found
+        res.status(404).json({ message: 'User not found' });
+      }
     } else {
       // File was not uploaded successfully
       res.status(400).json({ message: 'User profile picture upload failed' });
@@ -41,4 +53,5 @@ const uploadProfilePicture = async (req:Request, res:Response) => {
   }
 };
 
-export { multerConfig, uploadProfilePicture }
+
+export { multerConfig,uploadProfilePicture }

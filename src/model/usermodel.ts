@@ -7,7 +7,9 @@ class User extends Model {
   public email!: string;
   public password!: string;
   public role!:string;
+  public profilePictureUrl!: string;
   static role: string;
+ 
  
 }
 
@@ -37,6 +39,10 @@ User.init({
     type: DataTypes.ENUM('admin', 'student'),
     allowNull: false,
   },
+  profilePictureUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  }
 }, {
   tableName: 'users',
   sequelize,

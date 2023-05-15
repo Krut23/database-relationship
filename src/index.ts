@@ -8,11 +8,12 @@ import Result from './model/resultmodel';
 import { addResult,updateResult, getResult } from './route/result';
 import {signup} from './route/signup';
 import { loginUser } from './route/login';
-import { multerConfig, uploadProfilePicture } from './multer/profile';
+import { multerConfig , uploadProfilePicture } from './multer/profile';
+import path from 'path';
 
 
 dotenv.config({ path: './config.env' });
-const port = 3001;
+const port = 3002;
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -23,7 +24,7 @@ User.sync();
 Result.sync();
 
 // Set up middleware to authenticate requests using JWT tokens
-const authenticate = (req: Request, res: Response, next: NextFunction) => {
+const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
@@ -43,10 +44,11 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
 // Set up API routes
 app.post('/user/signup', signup);
 app.post('/user/login', loginUser);
-app.post('/result', authenticate, addResult);
-app.put('/result/:student_id', authenticate, updateResult);
-app.get('/result', authenticate, getResult);
-app.post('/users/profile-picture', multerConfig.single('profilePicture'), uploadProfilePicture);
+app.post('/result', authenticateToken, addResult);
+app.put('/result/:student_id', authenticateToken, updateResult);
+app.get('/result', authenticateToken, getResult);
+app.post('/users/profile-picture',authenticateToken, multerConfig.single('profilePicture'), uploadProfilePicture);
+
 
 
 app.listen(port, () => {
