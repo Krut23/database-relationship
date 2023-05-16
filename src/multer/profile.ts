@@ -28,27 +28,38 @@ const multerConfig = multer({
 });
 
 const uploadProfilePicture = async (req:Request, res:Response) => {
-  try {
-    
+  const userId = req.params.userId;
+  const profilePictureUrl = req.file?.filename ? `${req.protocol}://${req.get('host')}/upload/images/${req.file.filename}` : undefined;
 
-    if (req.file !== undefined) {
-      // File was uploaded successfully
-      const user = await User.findOne({ where: { id: req.user.id } });
-      if (user) {
-        const profilePictureUrl = `http://localhost:3002/upload/images/${req.file.filename}`;
-        await user.update({ profilePictureUrl });
-        res.status(200).json({ message: 'User uploaded profile picture' });
-      } else {
-        res.status(404).json({ message: 'User not found' });
-      }
+  if (!req.file) {
+    return res.status(400).json({
+      message: 'Profile picture missing',
+    });
+  }
+
+  try {
+    const user = await User.findOne({where: {id: userId}});
+
+    if (!user) {
+      return res.status(404).json({message: 'User not found'});
+    }
+
+    if (profilePictureUrl) {
+      user.profilePictureUrl = profilePictureUrl;
+      await user.save();
+
+      return res.status(200).json({message: 'User uploaded profile picture',profilePictureUrl});
     } else {
-      res.status(400).json({ message: 'User profile picture upload failed' });
+      return res.status(400).json({
+        message: 'User profile picture not uploaded',
+      });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    return res.status(500).json({
+      message: 'Internal server error',
+    });
   }
-};
+}
 
-
-export { multerConfig,uploadProfilePicture }
+export { multerConfig,uploadProfilePicture }  

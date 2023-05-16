@@ -14,7 +14,7 @@ import path from 'path';
 
 
 dotenv.config({ path: './config.env' });
-const port = 3002;
+const port = 3004;
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -49,7 +49,7 @@ app.post('/user/login', loginUser);
 app.post('/result', authenticateToken, addResult);
 app.put('/result/:student_id', authenticateToken, updateResult);
 app.get('/result', authenticateToken, getResult);
-app.post('/users/profile-picture',authenticateToken, multerConfig.single('profilePicture'), uploadProfilePicture);
+app.post('/user/profile-picture/:userId',authenticateToken, multerConfig.single('profilePicture'), uploadProfilePicture);
 
 
 

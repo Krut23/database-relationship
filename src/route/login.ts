@@ -25,7 +25,7 @@ const loginSchema = Joi.object({
 
 export const loginUser = async (req: Request, res: Response) => {
   try {
-    const { error, value } = loginSchema.validate(req.body);
+    const { error} = loginSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
     }
@@ -35,15 +35,18 @@ export const loginUser = async (req: Request, res: Response) => {
      if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
-
     const match = await bcrypt.compare(req.body.password, user.password);
     if (!match) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
+    // user has access to the requested record
+    if (req.params.id && (Number(req.params.id) !== user.id && user.role !== 'admin')) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
     const accessToken = jwt.sign({ id: user.id, role: user.role }, process.env.ACCESS_TOKEN as string, { expiresIn: '10h' });
-  
-  res.json({ accessToken });
+    res.json({ accessToken });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

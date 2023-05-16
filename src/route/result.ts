@@ -24,14 +24,17 @@ const addResult = async (req: Request, res: Response) => {
     if (error) {
       return res.status(400).json({ message: error.details[0].message });
     }
-    const student_id = req.user.id;
 
-    if (req.user.role !== 'admin') {
+    const user_id = req.user.id;
+    const user_role = req.user.role;
+    const student_id = req.body.student_id;
+
+    if (user_role !== 'admin' && user_id !== student_id) {
       return res.status(403).json({ message: 'Access forbidden' });
     }
 
     const result = await Result.create({
-      student_id: req.body.student_id,
+      student_id: student_id,
       subject: req.body.subject,
       marks: req.body.marks
     });
@@ -44,7 +47,8 @@ const addResult = async (req: Request, res: Response) => {
 }
 
 
-const updateResult = async (req: Request, res: Response) =>{
+
+const updateResult = async (req: Request, res: Response) => {
   const { error } = studentSchema.validate(req.body);
   if (error) {
     return res.status(400).json({ error: error.details[0].message });
@@ -53,8 +57,7 @@ const updateResult = async (req: Request, res: Response) =>{
   const { subject, marks } = req.body;
 
   try {
-    
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.id !== studentId) {
       return res.status(403).json({ message: 'Access forbidden' });
     }
 
@@ -72,21 +75,23 @@ const updateResult = async (req: Request, res: Response) =>{
 
 
 
+
 const getResult = async (req: Request, res: Response) => {
   try {
     const { error } = studentSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
-    const students: Result[] = await Result.findAll();
+    const userId = req.user.id;
+    const students: Result[] = await Result.findAll({where: {userId: userId}
+    });
+
     res.json({ students });
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal server error");
   }
 };
-
-
 
 
 export { addResult, updateResult, getResult };
