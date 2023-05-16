@@ -48,7 +48,7 @@ export const signup = async (req: Request, res: Response, next: NextFunction) =>
       role,
     });
 
-    // Add record level access control here
+    // Add record level access control 
     if (user.role === 'admin') {
       return res.status(201).json({ message: 'Register successful' });
     } else {
