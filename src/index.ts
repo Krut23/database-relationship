@@ -7,17 +7,18 @@ import User from './model/usermodel';
 import Result from './model/resultmodel';
 import { addResult,updateResult, getResult } from './route/result';
 import {signup} from './route/signup';
-import { loginUser } from './route/login';
+import { loginUser,forgotPassword ,resetPassword } from './route/login';
 import { multerConfig , uploadProfilePicture } from './multer/profile';
 import path from 'path';
 
 
 
 dotenv.config({ path: './config.env' });
-const port = 3004;
+const port = 3006;
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 
 // Set up User and Result models
@@ -46,6 +47,8 @@ app.use('/upload/images', express.static(path.join(__dirname, 'upload', 'images'
 // Set up API routes
 app.post('/user/signup', signup);
 app.post('/user/login', loginUser);
+app.post('/forgot-password', forgotPassword);
+app.post('/reset-password', resetPassword);
 app.post('/result', authenticateToken, addResult);
 app.put('/result/:student_id', authenticateToken, updateResult);
 app.get('/result', authenticateToken, getResult);

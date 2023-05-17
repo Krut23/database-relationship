@@ -5,8 +5,9 @@ dotenv.config({ path: './config.env' });
 
 const sequelize = new Sequelize(
   `postgres://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}`,
-  { dialect: 'postgres' }
+  { dialect: 'postgres', logging: false  }
 )
+
 // Sync the models with the database
 sequelize.sync({ force: false })
   .then(() => {

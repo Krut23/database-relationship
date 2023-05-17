@@ -9,7 +9,9 @@ class User extends Model {
   public role!:string;
   public profilePictureUrl!: string;
   static role: string;
- 
+  public passwordResetOTP!: Number | null;
+  public passwordResetOTPExpire!: Date | null;
+  
  
 }
 
@@ -42,7 +44,11 @@ User.init({
   profilePictureUrl: {
     type: DataTypes.STRING,
     allowNull: true,
-  }
+  },
+  passwordResetOTP: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'users',
   sequelize,

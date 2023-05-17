@@ -25,16 +25,14 @@ const addResult = async (req: Request, res: Response) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const user_id = req.user.id;
     const user_role = req.user.role;
-    const student_id = req.body.student_id;
 
-    if (user_role !== 'admin' && user_id !== student_id) {
+    if (user_role !== 'admin') {
       return res.status(403).json({ message: 'Access forbidden' });
     }
 
     const result = await Result.create({
-      student_id: student_id,
+      student_id: req.body.student_id,
       subject: req.body.subject,
       marks: req.body.marks
     });
@@ -73,25 +71,34 @@ const updateResult = async (req: Request, res: Response) => {
   }
 }
 
-
-
-
 const getResult = async (req: Request, res: Response) => {
   try {
     const { error } = studentSchema.validate(req.body);
     if (error) {
       return res.status(400).json({ error: error.details[0].message });
     }
+    const { role } = req.user;
+    if (role !== 'admin' && role !== 'student') {
+      return res.status(401).json({ error: 'Access forbidden' });
+    }
     const userId = req.user.id;
-    const students: Result[] = await Result.findAll({where: {userId: userId}
+
+    // pagination
+    const { limit = 20, page = 1 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const { count, rows: students } = await Result.findAndCountAll({
+      where: { userId },
+      limit: Number(limit),
+      offset,
     });
 
-    res.json({ students });
+    res.json({ students, totalCount: count, currentPage: page });
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal server error");
   }
 };
+
 
 
 export { addResult, updateResult, getResult };
