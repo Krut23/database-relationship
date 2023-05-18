@@ -5,8 +5,6 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import User from '../model/usermodel';
 import '../database'
-import { Sequelize } from 'sequelize';
-
 
 dotenv.config();
 
