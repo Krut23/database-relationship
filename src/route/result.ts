@@ -86,7 +86,6 @@ const getResult = async (req: Request, res: Response) => {
     const { limit = 20, page = 1 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
     const { count, rows: students } = await Result.findAndCountAll({
-      where: { student_id },
       limit: Number(limit),
       offset,
     });

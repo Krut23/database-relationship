@@ -76,10 +76,10 @@ export const forgotPassword = async(req: Request, res: Response) => {
 
 
 export const resetPassword = async (req: Request, res: Response) => {
-  const { otp, newPassword } = req.body;
+  const { email, otp, newPassword } = req.body;
 
   try {
-    const user = await User.findOne({where: {passwordResetOTP: otp.toString()}});
+    const user = await User.findOne({ where: { email, passwordResetOTP: otp.toString() } });
     
     if (!user || user.passwordResetOTPExpire === null ||user.passwordResetOTPExpire < new Date()) {
       return res.status(400).json({ message: ' Invalid and expired OTP' });
